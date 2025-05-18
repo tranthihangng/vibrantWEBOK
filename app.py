@@ -1,8 +1,6 @@
 from flask import Flask, render_template, jsonify, send_file, request
 from flask_socketio import SocketIO, emit
 from flask_cors import CORS
-import mysql.connector
-import json
 from datetime import datetime, timedelta
 import pandas as pd
 import io
@@ -14,36 +12,16 @@ app = Flask(__name__)
 CORS(app)
 socketio = SocketIO(app, cors_allowed_origins="*")
 
-# Database configuration
-DB_CONFIG = {
-    'host': 'localhost',
-    'user': 'root',
-    'password': '123456',
-    'database': 'pump_monitoring'
-}
-
 # Thread for real-time updates
 thread = None
 thread_lock = threading.Lock()
 
-def get_db_connection():
-    return mysql.connector.connect(**DB_CONFIG)
-
 def get_pump_status():
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
+        db = DatabaseHandler()
+        success, result = db.get_latest_data(limit=1)
         
-        # Get latest prediction
-        cursor.execute("""
-            SELECT time, status, features
-            FROM predictions
-            ORDER BY time DESC
-            LIMIT 1
-        """)
-        latest = cursor.fetchone()
-        
-        if not latest:
+        if not success or result.empty:
             return {
                 'status': 'UNKNOWN',
                 'last_updated': None,
@@ -55,29 +33,17 @@ def get_pump_status():
                 }
             }
         
-        # Parse features JSON
-        probabilities = {
-            'normal': 0,
-            'rung_12_5': 0,
-            'rung_6': 0,
-            'stop': 0
-        }
-        
-        if latest['features']:
-            features = json.loads(latest['features'])
-            if isinstance(features, dict):
-                if 'probabilities' in features:
-                    probabilities = features['probabilities']
-                elif all(key in features for key in probabilities.keys()):
-                    probabilities = {k: float(features[k]) for k in probabilities.keys()}
-        
-        cursor.close()
-        conn.close()
+        latest = result.iloc[0]
         
         return {
             'status': latest['status'].upper(),
-            'last_updated': "2025-05-18 13:10:54",
-            'probabilities': probabilities
+            'last_updated': latest['timestamp'].strftime("%Y-%m-%d %H:%M:%S"),
+            'probabilities': {
+                'normal': float(latest['normal_prob']),
+                'rung_12_5': float(latest['rung_12_5_prob']),
+                'rung_6': float(latest['rung_6_prob']),
+                'stop': float(latest['stop_prob'])
+            }
         }
     except Exception as e:
         print(f"Error getting pump status: {e}")
@@ -85,55 +51,38 @@ def get_pump_status():
 
 def get_daily_stats():
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
-        
+        db = DatabaseHandler()
         today = datetime.now().date()
+        tomorrow = today + timedelta(days=1)
         
-        # Get today's statistics
-        cursor.execute("""
-            SELECT 
-                COUNT(*) as total,
-                SUM(CASE WHEN status = 'normal' THEN 1 ELSE 0 END) as normal_count,
-                SUM(CASE WHEN status = 'rung_6' THEN 1 ELSE 0 END) as rung_6_count,
-                SUM(CASE WHEN status = 'rung_12_5' THEN 1 ELSE 0 END) as rung_12_5_count
-            FROM predictions
-            WHERE DATE(time) = %s
-        """, (today,))
+        success, result = db.get_data_by_timerange(today, tomorrow)
         
-        stats = cursor.fetchone()
-        cursor.close()
-        conn.close()
-        
-        return {
-            'total': stats['total'] or 0,
-            'normal': stats['normal_count'] or 0,
-            'minor_faults': stats['rung_6_count'] or 0,
-            'major_faults': stats['rung_12_5_count'] or 0
+        if not success:
+            return None
+            
+        stats = {
+            'total': len(result),
+            'normal': len(result[result['status'] == 'normal']),
+            'minor_faults': len(result[result['status'] == 'rung_6']),
+            'major_faults': len(result[result['status'] == 'rung_12_5'])
         }
+        
+        return stats
     except Exception as e:
         print(f"Error getting daily stats: {e}")
         return None
 
 def background_thread():
     """Thread that handles real-time updates"""
-    db = DatabaseHandler()
-    
     while True:
         try:
-            # Get latest prediction
-            latest = db.get_latest_prediction()
-            if latest:
-                # Format data for frontend
-                status_data = {
-                    'status': latest['status'].upper(),
-                    'last_updated': latest['time'].strftime("%Y-%m-%d %H:%M:%S"),
-                    'probabilities': latest['features'].get('probabilities', {}) if latest['features'] else {}
-                }
+            # Get latest status
+            status_data = get_pump_status()
+            if status_data:
                 socketio.emit('status_update', status_data)
             
             # Get daily stats
-            stats = db.get_daily_stats()
+            stats = get_daily_stats()
             if stats:
                 socketio.emit('stats_update', stats)
                 
@@ -155,12 +104,11 @@ def handle_connect():
 @app.route('/')
 def index():
     """Render main dashboard"""
-    db = DatabaseHandler()
-    latest = db.get_latest_prediction()
-    stats = db.get_daily_stats()
+    status = get_pump_status()
+    stats = get_daily_stats()
     
     return render_template('index.html', 
-                         latest_prediction=latest,
+                         latest_prediction=status,
                          daily_stats=stats)
 
 @app.route('/history')
@@ -171,100 +119,56 @@ def history():
 @app.route('/api/history')
 def get_history():
     """API endpoint for history data"""
-    db = DatabaseHandler()
-    page = int(request.args.get('page', 1))
-    result = db.get_predictions_by_timerange(page=page)
-    
-    if result:
-        return jsonify(result)
-    return jsonify({'error': 'Failed to fetch history'}), 500
+    try:
+        db = DatabaseHandler()
+        page = int(request.args.get('page', 1))
+        limit = 50  # Records per page
+        offset = (page - 1) * limit
+        
+        success, result = db.get_latest_data(limit=limit)
+        
+        if not success:
+            return jsonify({'error': 'Failed to fetch history'}), 500
+            
+        return jsonify({
+            'data': result.to_dict('records'),
+            'page': page,
+            'total': len(result)
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/export-csv')
 def export_csv():
     try:
         date_from = request.args.get('dateFrom')
         date_to = request.args.get('dateTo')
-        status = request.args.get('status', 'all')
-
-        conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
         
-        # Build query conditions
-        conditions = ["1=1"]
-        params = []
-        
-        if date_from:
-            date_from = datetime.strptime(date_from, '%Y-%m-%dT%H:%M')
-            conditions.append("time >= %s")
-            params.append(date_from)
+        if not date_from or not date_to:
+            return jsonify({'error': 'Date range required'}), 400
             
-        if date_to:
-            date_to = datetime.strptime(date_to, '%Y-%m-%dT%H:%M')
-            conditions.append("time <= %s")
-            params.append(date_to)
-            
-        if status and status.lower() != 'all':
-            conditions.append("status = %s")
-            params.append(status)
-            
-        where_clause = " AND ".join(conditions)
+        date_from = datetime.strptime(date_from, '%Y-%m-%dT%H:%M')
+        date_to = datetime.strptime(date_to, '%Y-%m-%dT%H:%M')
         
-        query = f"""
-            SELECT time, status, features
-            FROM predictions
-            WHERE {where_clause}
-            ORDER BY time DESC
-        """
-        cursor.execute(query, params)
-        results = cursor.fetchall()
+        db = DatabaseHandler()
+        success, result = db.get_data_by_timerange(date_from, date_to)
         
-        # Prepare data for CSV
-        data = []
-        for row in results:
-            probabilities = {
-                'normal': 0,
-                'rung_12_5': 0,
-                'rung_6': 0,
-                'stop': 0
-            }
+        if not success:
+            return jsonify({'error': 'Failed to fetch data'}), 500
             
-            if row['features']:
-                features = json.loads(row['features'])
-                if isinstance(features, dict):
-                    if 'probabilities' in features:
-                        probabilities = features['probabilities']
-                    elif all(key in features for key in probabilities.keys()):
-                        probabilities = {k: float(features[k]) for k in probabilities.keys()}
-            
-            data.append({
-                'Time': row['time'].strftime("%Y-%m-%d %H:%M:%S"),
-                'Status': row['status'].upper(),
-                'Normal Probability': f"{probabilities['normal']*100:.2f}%",
-                'Rung 12.5Hz Probability': f"{probabilities['rung_12_5']*100:.2f}%",
-                'Rung 6Hz Probability': f"{probabilities['rung_6']*100:.2f}%",
-                'Stop Probability': f"{probabilities['stop']*100:.2f}%",
-                'Confidence': f"{max(probabilities.values())*100:.2f}%"
-            })
-        
-        cursor.close()
-        conn.close()
-        
-        # Create CSV
-        df = pd.DataFrame(data)
-        buffer = io.StringIO()
-        df.to_csv(buffer, index=False)
-        buffer.seek(0)
+        # Convert to CSV
+        output = io.StringIO()
+        result.to_csv(output, index=False)
         
         return send_file(
-            io.BytesIO(buffer.getvalue().encode('utf-8')),
+            io.BytesIO(output.getvalue().encode('utf-8')),
             mimetype='text/csv',
             as_attachment=True,
-            download_name=f'pump_predictions_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv'
+            download_name=f'pump_data_{date_from.strftime("%Y%m%d")}_{date_to.strftime("%Y%m%d")}.csv'
         )
         
     except Exception as e:
-        print(f"Error exporting CSV: {e}")
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
-    socketio.run(app, debug=True, port=5000) 
+    socketio.run(app, debug=True) 
