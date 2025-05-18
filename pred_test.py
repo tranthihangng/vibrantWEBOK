@@ -5,7 +5,7 @@ import joblib
 import time
 from datetime import datetime
 import os
-from database_handler import DatabaseHandler
+from database_writer import DatabaseWriter
 from flask import Flask, request, jsonify
 from telegram_notifier import TelegramNotifier
 import json
@@ -43,82 +43,6 @@ NOTIFICATION_INTERVAL = 120  # 2 phút = 120 giây
 last_data_received = 0
 ESP32_TIMEOUT = 50  # 50 giây timeout
 
-# def get_sensor_data():
-#     """Hàm này sẽ lấy dữ liệu từ cảm biến. Hiện tại dùng dữ liệu mẫu"""
-#     return [
-#         370.0,395.0,401.0,427.0,400.845,8.72192495954878,-0.07123772582064253,
-#         -0.0038091416031678094,627.3651464895928,522.0469353743749,286.622241390283,
-#         724.7144115046523,55.05505505505506,44.04404404404405,51.051051051051054,
-#         124.12412412412414,19132.793175772706,37209.813234632566,301.0,329.0,337.0,
-#         369.0,336.178,10.68453630252619,-0.1982585158803512,0.14284301226963958,
-#         997.7886756217295,220.82917449508707,688.782628327624,516.3288002856712,
-#         44.04404404404405
-#     ]
-
-# def predict_and_save():
-#     """Hàm dự đoán và lưu kết quả vào database"""
-#     try:
-#         # Lấy dữ liệu từ cảm biến
-#         manual_input = get_sensor_data()
-
-#         # Kiểm tra số lượng đặc trưng
-#         if len(manual_input) != 36:
-#             raise ValueError(f"Số lượng đặc trưng không hợp lệ: cần 36, đang có {len(manual_input)}")
-
-#         # Chuyển thành mảng numpy và reshape
-#         X_input = np.array(manual_input).reshape(1, -1)
-
-#         # Chuẩn hóa và dự đoán
-#         X_scaled = scaler.transform(X_input)
-        
-#         # Đo thời gian dự đoán
-#         start_time = time.time()
-#         prediction = model.predict(X_scaled)
-#         probabilities = model.predict_proba(X_scaled)
-#         end_time = time.time()
-
-#         elapsed_time_ms = (end_time - start_time) * 1000
-
-#         # Xử lý kết quả
-#         status = "fault" if prediction[0] == 1 else "normal"
-#         normal_prob = probabilities[0][0]
-#         fault_prob = probabilities[0][1]
-        
-#         print(f"\n⏱️ [{datetime.now()}] Đang dự đoán...")
-#         print(f"➡️  Kết quả: {status} (class {prediction[0]})")
-#         print(f"   Xác suất: Normal={normal_prob:.3f}, Fault={fault_prob:.3f}")
-#         print(f"   Thời gian tính toán: {elapsed_time_ms:.3f} ms")
-
-#         # Lưu vào database
-#         db = DatabaseHandler()
-#         success = db.save_prediction(
-#             status=status,
-#             normal_prob=normal_prob,
-#             fault_prob=fault_prob
-#         )
-        
-#         if success:
-#             print(f"✅ Đã lưu trạng thái vào database: {status}")
-#         else:
-#             print(f"❌ Lỗi khi lưu vào database")
-
-#         return True
-
-#     except Exception as e:
-#         print(f"❌ Lỗi trong quá trình dự đoán: {e}")
-#         return False
-
-# def run_continuous_prediction(interval=3):
-#     """Chạy dự đoán liên tục với khoảng thời gian interval giây"""
-#     print(f"🚀 Bắt đầu chạy dự đoán liên tục (interval: {interval}s)")
-#     print("⌛ Nhấn Ctrl+C để dừng...")
-    
-#     try:
-#         while True:
-#             predict_and_save()
-#             time.sleep(interval)
-#     except KeyboardInterrupt:
-#         print("\n👋 Đã dừng chương trình theo yêu cầu")
 
 @app.route('/predict', methods=['POST'])
 def receive_data():
@@ -193,8 +117,7 @@ def check_esp32_timeout():
         time.sleep(5)  # Kiểm tra mỗi 5 giây
 
 def get_status_from_probabilities(probabilities):
-    """Xác định trạng thái dựa trên xác suất của các lớp"""
-    # Lấy index của lớp có xác suất cao nhất
+    """Hàm chuyển đổi xác suất thành trạng thái"""
     predicted_class = np.argmax(probabilities)
     prob_value = probabilities[predicted_class]
     
@@ -204,21 +127,9 @@ def get_status_from_probabilities(probabilities):
         1: 'rung_12_5',
         2: 'rung_6',
         3: 'stop'
-
-
-        # 0: 'stop',
-        # 1: 'normal',
-        # 2: 'rung_6',
-        # 3: 'rung_12_5'
     }
     
-    status = status_mapping[predicted_class]
-    
-    # Tạo thông báo với độ tin cậy
-    confidence_msg = f"{status} (độ tin cậy: {prob_value:.2%})"
-    print(f"🔍 Dự đoán: {confidence_msg}")
-    
-    return status
+    return status_mapping[predicted_class]
 
 def predict_values(sensor_values):
     """Hàm dự đoán từ giá trị cảm biến"""
@@ -228,36 +139,62 @@ def predict_values(sensor_values):
         current_time = time.time()
         time_since_last = current_time - last_notification_time
 
+        # In ra dữ liệu gốc để debug
+        print(f"📊 Dữ liệu cảm biến nhận được: {sensor_values}")
+        print(f"📏 Số lượng đặc trưng: {len(sensor_values)}")
+
         # Chuyển thành mảng numpy và reshape
-        X_input = np.array(sensor_values).reshape(1, -1)
+        try:
+            X_input = np.array(sensor_values, dtype=np.float32).reshape(1, -1)
+            print(f"✅ Chuyển đổi dữ liệu thành công: shape={X_input.shape}")
+        except Exception as e:
+            print(f"❌ Lỗi khi chuyển đổi dữ liệu sang numpy array: {e}")
+            raise
 
         # Chuẩn hóa và dự đoán
-        X_scaled = scaler.transform(X_input)
+        try:
+            X_scaled = scaler.transform(X_input)
+            print(f"✅ Chuẩn hóa dữ liệu thành công: shape={X_scaled.shape}")
+        except Exception as e:
+            print(f"❌ Lỗi khi chuẩn hóa dữ liệu: {e}")
+            raise
         
         # Đo thời gian dự đoán
         start_time = time.time()
-        probabilities = model.predict_proba(X_scaled)[0]
+        try:
+            probabilities = model.predict_proba(X_scaled)[0]
+            print(f"✅ Dự đoán thành công: shape={probabilities.shape}")
+        except Exception as e:
+            print(f"❌ Lỗi khi dự đoán: {e}")
+            raise
+            
         end_time = time.time()
-
         elapsed_time_ms = (end_time - start_time) * 1000
 
         # Xử lý kết quả
-        status = get_status_from_probabilities(probabilities)
-        max_prob = np.max(probabilities)
+        try:
+            status = get_status_from_probabilities(probabilities)
+            print(f"✅ Xác định trạng thái thành công: {status}")
+        except Exception as e:
+            print(f"❌ Lỗi khi xác định trạng thái: {e}")
+            raise
         
-        print(f"⏱️ [{datetime.now()}] Đã dự đoán xong")
+        print(f"\n⏱️ [{datetime.now()}] Đã dự đoán xong")
         print(f"   Thời gian tính toán: {elapsed_time_ms:.3f} ms")
-
-        # Tính toán normal_prob và fault_prob từ probabilities
-        normal_prob = probabilities[0] if len(probabilities) > 0 else 0
-        fault_prob = probabilities[1] if len(probabilities) > 1 else 0
+        print(f"   Trạng thái: {status}")
+        print(f"   Xác suất:")
+        print(f"   - Normal: {probabilities[0]:.3f}")
+        print(f"   - Rung 12.5: {probabilities[1]:.3f}")
+        print(f"   - Rung 6: {probabilities[2]:.3f}")
+        print(f"   - Stop: {probabilities[3]:.3f}")
         
         # Lưu vào database
-        db = DatabaseHandler()
+        db = DatabaseWriter()
         success = db.save_prediction(
             status=status,
-            normal_prob=normal_prob,
-            fault_prob=fault_prob
+            probabilities=probabilities.tolist(),
+            sensor_data=sensor_values,
+            prediction_time_ms=elapsed_time_ms
         )
         
         if success:
@@ -277,12 +214,15 @@ def predict_values(sensor_values):
 
         return {
             'status': status,
-            'confidence': float(max_prob),
+            'confidence': float(max(probabilities)),
             'probabilities': probabilities.tolist()
         }
 
     except Exception as e:
-        print(f"❌ Lỗi trong quá trình dự đoán: {e}")
+        print(f"❌ Lỗi trong quá trình dự đoán: {str(e)}")
+        print(f"Chi tiết lỗi:", e.__class__.__name__)
+        import traceback
+        print(traceback.format_exc())
         return None
 
 if __name__ == "__main__":

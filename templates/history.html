@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Filters -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <div class="row align-items-end">
+                <div class="col-md-3">
+                    <label class="form-label">Từ ngày</label>
+                    <input type="date" class="form-control" id="startDate">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Đến ngày</label>
+                    <input type="date" class="form-control" id="endDate">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Trạng thái</label>
+                    <select class="form-select" id="statusFilter">
+                        <option value="all">Tất cả</option>
+                        <option value="normal">Bình thường</option>
+                        <option value="rung_6">Rung nhẹ (6Hz)</option>
+                        <option value="rung_12_5">Rung nặng (12.5Hz)</option>
+                        <option value="stop">Dừng</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <button class="btn btn-primary me-2" onclick="applyFilters()">
+                        <i class="fas fa-filter"></i> Lọc
+                    </button>
+                    <button class="btn btn-outline-primary" onclick="exportData()">
+                        <i class="fas fa-download"></i> Xuất CSV
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Data Table -->
+    <div class="card">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover" id="historyTable">
+                    <thead>
+                        <tr>
+                            <th>Thời gian</th>
+                            <th>Trạng thái</th>
+                            <th>Bình thường</th>
+                            <th>Rung nhẹ</th>
+                            <th>Rung nặng</th>
+                            <th>Dừng</th>
+                            <th>Thời gian xử lý</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- Data will be inserted here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Set default date range (last 7 days)
+    const today = new Date();
+    const weekAgo = new Date(today);
+    weekAgo.setDate(weekAgo.getDate() - 7);
+
+    document.getElementById('startDate').value = weekAgo.toISOString().split('T')[0];
+    document.getElementById('endDate').value = today.toISOString().split('T')[0];
+
+    function createProbabilityBar(probability, color) {
+        return `
+        <div class="d-flex align-items-center">
+            <div class="probability-bar me-2" 
+                 style="width: ${probability * 100}px; background-color: ${color}">
+            </div>
+            <span>${formatProbability(probability)}</span>
+        </div>
+    `;
+    }
+
+    function updateTable() {
+        const startDate = document.getElementById('startDate').value;
+        const endDate = document.getElementById('endDate').value;
+        const status = document.getElementById('statusFilter').value;
+
+        fetch(`/api/history-data?start_date=${startDate}&end_date=${endDate}&status=${status}`)
+            .then(response => response.json())
+            .then(data => {
+                const tbody = document.querySelector('#historyTable tbody');
+                tbody.innerHTML = '';
+
+                data.forEach(record => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                    <td>${formatDateTime(record.time)}</td>
+                    <td>
+                        <div class="d-flex align-items-center">
+                            <div class="status-indicator" 
+                                 style="background-color: ${status_colors[record.status]}">
+                            </div>
+                            <span class="ms-2">${status_labels[record.status]}</span>
+                        </div>
+                    </td>
+                    <td>${createProbabilityBar(record.normal_prob, status_colors.normal)}</td>
+                    <td>${createProbabilityBar(record.rung_6_prob, status_colors.rung_6)}</td>
+                    <td>${createProbabilityBar(record.rung_12_5_prob, status_colors.rung_12_5)}</td>
+                    <td>${createProbabilityBar(record.stop_prob, status_colors.stop)}</td>
+                    <td>${record.prediction_time_ms.toFixed(2)} ms</td>
+                `;
+                    tbody.appendChild(row);
+                });
+            });
+    }
+
+    function applyFilters() {
+        updateTable();
+    }
+
+    function exportData() {
+        const startDate = document.getElementById('startDate').value;
+        const endDate = document.getElementById('endDate').value;
+        const status = document.getElementById('statusFilter').value;
+
+        window.location.href = `/api/export-csv?start_date=${startDate}&end_date=${endDate}&status=${status}`;
+    }
+
+    // Initial load
+    updateTable();
+
+    // Make status colors and labels available to JavaScript
+    const status_colors = {{ status_colors| tojson }};
+    const status_labels = {{ status_labels| tojson }};
+</script>
+{% endblock %}

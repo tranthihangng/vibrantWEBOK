@@ -1,78 +1,95 @@
-# Equipment Condition Monitoring System
+# Pump Monitoring System
 
-A machine learning-based system for real-time monitoring of equipment conditions using ESP32 sensors. The system can detect normal operations and fault conditions, store results in a database, and send notifications when equipment state changes.
+A web application for monitoring pump/motor states, providing real-time visualization of sensor data and prediction results.
 
-## Overview
+## Features
 
-This project implements a complete pipeline for equipment condition monitoring:
-- Data collection from sensors via ESP32 microcontrollers
-- Data transmission through HTTP/TCP
-- Machine learning classification of equipment state
-- Database storage of results
-- Notification system via Telegram
+- **Authentication system** with login and registration
+- **Dashboard** showing real-time pump status, charts, and statistics
+- **History page** for viewing historical data with filtering and export options
+- **Export capabilities** for CSV and PDF reports
+- **Real-time updates** with automatic dashboard refreshing
 
-## Components
+## Technical Stack
 
-### Hardware
-- ESP32 microcontrollers with sensors
-- Equipment/machinery for monitoring
-
-### Software
-- Python-based machine learning models
-- Flask web server for data reception
-- Database for storing results
-- Telegram notification system
-
-## File Descriptions
-
-- **trainmodel_practical.py**: Trains the machine learning model with cross-validation, regularization, and hyperparameter tuning
-- **visualize_classification.py**: Visualizes the classification results
-- **pred_test.py**: Flask server that receives sensor data, makes predictions, and handles notifications
-- **merged_data_final4c.csv**: Merged dataset containing normal and fault condition data
+- **Backend**: Flask (Python)
+- **Database**: MySQL
+- **Frontend**: HTML, CSS, JavaScript, Bootstrap
+- **Charting**: Chart.js
+- **Tables**: DataTables
+- **Reporting**: Pandas, Matplotlib, Seaborn
 
 ## Setup Instructions
 
-1. **Install Dependencies**
+### Prerequisites
+
+- Python 3.7+
+- MySQL server
+- pip (Python package manager)
+
+### Installation
+
+1. Clone the repository:
    ```
-   pip install pandas numpy scikit-learn matplotlib seaborn flask joblib
+   git clone [repository_url]
+   cd [repository_directory]
    ```
 
-2. **Train the Model**
+2. Create a virtual environment and activate it:
    ```
-   python trainmodel_practical.py
+   python -m venv venv
+   # On Windows
+   venv\Scripts\activate
+   # On Unix/MacOS
+   source venv/bin/activate
    ```
-   This generates:
-   - `practical_mlp_best_model.joblib`: Trained neural network model
-   - `practical_scaler.joblib`: Data scaler for normalization
-   - Various visualization files showing model performance
 
-3. **Configure ESP32**
-   - Program ESP32 devices to collect sensor data and send to the server
-   - Ensure they are configured to send data to the correct endpoint
-
-4. **Run the Prediction Server**
+3. Install the required packages:
    ```
-   python pred_test.py
+   pip install -r requirements.txt
    ```
-   This starts the Flask server to receive data and make predictions
 
-## Usage
+4. Set up the MySQL database:
+   - Create a MySQL user (or use an existing one)
+   - Update the database configuration in `database_handler.py`
+   - Run the schema script: `mysql -u your_user -p < schema.sql`
+   - Or let the application create the database structures automatically
 
-1. The ESP32 devices collect sensor data from the equipment
-2. Data is sent to the Flask server via HTTP
-3. The server processes the data, makes predictions about equipment state
-4. Results are stored in the database
-5. If an abnormal condition is detected, notifications are sent via Telegram
+5. Run the application:
+   ```
+   python app.py
+   ```
 
-## Model Information
+6. Access the application at http://localhost:5000
 
-The system classifies equipment states into categories:
-- normal0: Normal operating condition
-- rung5_18: Fault condition type 1
-- rung10_1: Fault condition type 2
+### Default Login
 
-The model is a neural network trained with:
-- Cross-validation for reliable performance estimation
-- L2 regularization to prevent overfitting
-- Early stopping to optimize training time
-- Hyperparameter tuning for optimal configuration 
+- Username: admin
+- Password: admin
+
+## Project Structure
+
+- **app.py** - Main Flask application
+- **database_handler.py** - Database operations handler
+- **templates/** - HTML templates
+  - **base.html** - Base template with navigation
+  - **login.html** - Login and registration forms
+  - **dashboard.html** - Main dashboard display
+  - **history.html** - History and export view
+- **static/** - Static assets (CSS, JS)
+- **schema.sql** - Database schema definition
+
+## API Endpoints
+
+- `/api/latest` - Get latest predictions
+- `/api/status` - Get current pump status
+- `/api/daily-stats` - Get daily statistics
+- `/api/export-csv` - Export data as CSV
+- `/api/export-report` - Export PDF report
+
+## Security Considerations
+
+- Passwords are hashed using bcrypt
+- Session management for authentication
+- Input validation for all forms
+- Login required for all sensitive operations 

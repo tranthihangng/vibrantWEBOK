@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Pump Monitoring System{% endblock %}
+
+{% block additional_styles %}
+<style>
+    .stats-card {
+        margin-bottom: 15px;
+    }
+
+    .stats-value {
+        font-size: 24px;
+        font-weight: bold;
+    }
+
+    .stats-label {
+        color: #666;
+        font-size: 14px;
+    }
+
+    .refresh-button {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        z-index: 1000;
+    }
+
+    #last-update {
+        position: fixed;
+        bottom: 20px;
+        left: 270px;
+        z-index: 1000;
+        padding: 10px;
+        background: rgba(255, 255, 255, 0.9);
+        border-radius: 5px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+
+    .auto-update-status {
+        margin-left: 10px;
+        font-size: 0.9em;
+    }
+
+    .update-active {
+        color: #28a745;
+    }
+
+    .update-inactive {
+        color: #dc3545;
+    }
+
+    .highlight {
+        animation: highlight 1s ease-in-out;
+    }
+
+    @keyframes highlight {
+        0% {
+            background-color: #fff;
+        }
+
+        50% {
+            background-color: #e3f2fd;
+        }
+
+        100% {
+            background-color: #fff;
+        }
+    }
+
+    /* Debug info */
+    .debug-info {
+        background-color: #f8f9fa;
+        border: 1px solid #ddd;
+        padding: 15px;
+        margin-bottom: 20px;
+        font-family: monospace;
+        white-space: pre-wrap;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Debug Info Section -->
+<div class="card mb-4">
+    <div class="card-header bg-secondary text-white">
+        <h5 class="card-title mb-0">
+            <i class="bi bi-bug"></i> Debug Information
+        </h5>
+    </div>
+    <div class="card-body debug-info">
+        <h6>Predictions Data:</h6>
+        {% if predictions %}
+        <p>Number of predictions: {{ predictions|length }}</p>
+        {% for pred in predictions %}
+        <p>ID: {{ pred.id }}, Time: {{ pred.time }}, Status: {{ pred.status }}, Confidence: {{ pred.confidence }}</p>
+        {% endfor %}
+        {% else %}
+        <p>No prediction data found!</p>
+        {% endif %}
+
+        <h6>Pump Status:</h6>
+        {% if pump_status %}
+        {% for pump_id, info in pump_status.items() %}
+        <p>Pump ID: {{ pump_id }}, Status: {{ info.status }}, Last Updated: {{ info.last_updated }}</p>
+        {% endfor %}
+        {% else %}
+        <p>No pump status data found!</p>
+        {% endif %}
+    </div>
+</div>
+
+<h1 class="mb-4">
+    <i class="bi bi-gear-fill text-primary"></i>
+    Pump Monitoring Dashboard
+    <span id="update-status" class="auto-update-status update-active">
+        <i class="bi bi-arrow-repeat"></i> Auto Update Active
+    </span>
+</h1>
+
+<div class="row">
+    <!-- ... rest of the dashboard content ... -->
+    {% endblock %}
