@@ -3,9 +3,13 @@ services:
     name: pump-monitoring
     env: python
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn app:app
+    startCommand: python -m gunicorn app:app
     envVars:
       - key: PYTHON_VERSION
         value: 3.9.0
+      - key: PYTHONUNBUFFERED
+        value: "true"
     healthCheckPath: /
-    autoDeploy: true 
+    autoDeploy: true
+    plan: free
+    region: singapore 
