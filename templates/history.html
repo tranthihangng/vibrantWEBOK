@@ -39,23 +39,58 @@
     <!-- Data Table -->
     <div class="card">
         <div class="card-body">
-            <div class="table-responsive">
-                <table class="table table-hover" id="historyTable">
-                    <thead>
-                        <tr>
-                            <th>Thời gian</th>
-                            <th>Trạng thái</th>
-                            <th>Bình thường</th>
-                            <th>Rung nhẹ</th>
-                            <th>Rung nặng</th>
-                            <th>Dừng</th>
-                            <th>Thời gian xử lý</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <!-- Data will be inserted here -->
-                    </tbody>
-                </table>
+            <!-- Loading State -->
+            <div id="loadingState" class="text-center py-5 d-none">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Đang tải...</span>
+                </div>
+            </div>
+
+            <!-- Error State -->
+            <div id="errorState" class="text-center py-5 d-none">
+                <i class="fas fa-exclamation-circle text-danger"></i>
+                <p class="text-danger mb-0">Không thể tải dữ liệu. Vui lòng thử lại.</p>
+                <button class="btn btn-sm btn-outline-primary mt-2" onclick="retryLoad()">
+                    Thử lại
+                </button>
+            </div>
+
+            <!-- Data Table -->
+            <div id="dataTable">
+                <div class="table-responsive">
+                    <table class="table table-hover" id="historyTable">
+                        <thead>
+                            <tr>
+                                <th>Thời gian</th>
+                                <th>Trạng thái</th>
+                                <th>Bình thường</th>
+                                <th>Rung nhẹ</th>
+                                <th>Rung nặng</th>
+                                <th>Dừng</th>
+                                <th>Thời gian xử lý</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Data will be inserted here -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Pagination -->
+                <div class="d-flex justify-content-between align-items-center mt-3">
+                    <div class="text-muted">
+                        Hiển thị <span id="startIndex">0</span> - <span id="endIndex">0</span>
+                        trong tổng số <span id="totalRecords">0</span> bản ghi
+                    </div>
+                    <div class="btn-group">
+                        <button class="btn btn-outline-primary" onclick="previousPage()" id="prevButton" disabled>
+                            <i class="fas fa-chevron-left"></i> Trước
+                        </button>
+                        <button class="btn btn-outline-primary" onclick="nextPage()" id="nextButton" disabled>
+                            Sau <i class="fas fa-chevron-right"></i>
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -63,7 +98,19 @@
 {% endblock %}
 
 {% block extra_js %}
+<!-- Initialize server data -->
+<script type="application/json" id="serverData">
+    {{ {
+        'status_colors': status_colors,
+        'status_labels': status_labels
+    }| tojson }}
+</script>
+
 <script>
+    // Load server data
+    const serverData = JSON.parse(document.getElementById('serverData').textContent);
+    const { status_colors, status_labels } = serverData;
+
     // Set default date range (last 7 days)
     const today = new Date();
     const weekAgo = new Date(today);
@@ -71,6 +118,12 @@
 
     document.getElementById('startDate').value = weekAgo.toISOString().split('T')[0];
     document.getElementById('endDate').value = today.toISOString().split('T')[0];
+
+    // Pagination variables
+    const ITEMS_PER_PAGE = 15;
+    let currentPage = 1;
+    let totalRecords = 0;
+    let allData = [];
 
     function createProbabilityBar(probability, color) {
         return `
@@ -83,38 +136,105 @@
     `;
     }
 
+    function showLoading(show) {
+        document.getElementById('loadingState').classList.toggle('d-none', !show);
+        document.getElementById('dataTable').classList.toggle('d-none', show);
+        document.getElementById('errorState').classList.toggle('d-none', true);
+    }
+
+    function showError(show) {
+        document.getElementById('errorState').classList.toggle('d-none', !show);
+        document.getElementById('dataTable').classList.toggle('d-none', show);
+        document.getElementById('loadingState').classList.toggle('d-none', true);
+    }
+
+    function updatePagination() {
+        const startIndex = (currentPage - 1) * ITEMS_PER_PAGE + 1;
+        const endIndex = Math.min(currentPage * ITEMS_PER_PAGE, totalRecords);
+
+        document.getElementById('startIndex').textContent = totalRecords > 0 ? startIndex : 0;
+        document.getElementById('endIndex').textContent = endIndex;
+        document.getElementById('totalRecords').textContent = totalRecords;
+
+        document.getElementById('prevButton').disabled = currentPage === 1;
+        document.getElementById('nextButton').disabled = endIndex >= totalRecords;
+    }
+
+    function updateTableContent() {
+        const startIdx = (currentPage - 1) * ITEMS_PER_PAGE;
+        const endIdx = startIdx + ITEMS_PER_PAGE;
+        const pageData = allData.slice(startIdx, endIdx);
+
+        const tbody = document.querySelector('#historyTable tbody');
+        tbody.innerHTML = '';
+
+        pageData.forEach(record => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>${formatDateTime(record.time)}</td>
+                <td>
+                    <div class="d-flex align-items-center">
+                        <div class="status-indicator" 
+                             style="background-color: ${status_colors[record.status]}">
+                        </div>
+                        <span class="ms-2">${status_labels[record.status]}</span>
+                    </div>
+                </td>
+                <td>${createProbabilityBar(record.normal_prob, status_colors.normal)}</td>
+                <td>${createProbabilityBar(record.rung_6_prob, status_colors.rung_6)}</td>
+                <td>${createProbabilityBar(record.rung_12_5_prob, status_colors.rung_12_5)}</td>
+                <td>${createProbabilityBar(record.stop_prob, status_colors.stop)}</td>
+                <td>${record.prediction_time_ms.toFixed(2)} ms</td>
+            `;
+            tbody.appendChild(row);
+        });
+
+        updatePagination();
+    }
+
     function updateTable() {
         const startDate = document.getElementById('startDate').value;
         const endDate = document.getElementById('endDate').value;
         const status = document.getElementById('statusFilter').value;
 
-        fetch(`/api/history-data?start_date=${startDate}&end_date=${endDate}&status=${status}`)
-            .then(response => response.json())
-            .then(data => {
-                const tbody = document.querySelector('#historyTable tbody');
-                tbody.innerHTML = '';
+        showLoading(true);
 
-                data.forEach(record => {
-                    const row = document.createElement('tr');
-                    row.innerHTML = `
-                    <td>${formatDateTime(record.time)}</td>
-                    <td>
-                        <div class="d-flex align-items-center">
-                            <div class="status-indicator" 
-                                 style="background-color: ${status_colors[record.status]}">
-                            </div>
-                            <span class="ms-2">${status_labels[record.status]}</span>
-                        </div>
-                    </td>
-                    <td>${createProbabilityBar(record.normal_prob, status_colors.normal)}</td>
-                    <td>${createProbabilityBar(record.rung_6_prob, status_colors.rung_6)}</td>
-                    <td>${createProbabilityBar(record.rung_12_5_prob, status_colors.rung_12_5)}</td>
-                    <td>${createProbabilityBar(record.stop_prob, status_colors.stop)}</td>
-                    <td>${record.prediction_time_ms.toFixed(2)} ms</td>
-                `;
-                    tbody.appendChild(row);
-                });
+        fetch(`/api/history-data?start_date=${startDate}&end_date=${endDate}&status=${status}`)
+            .then(response => {
+                if (!response.ok) throw new Error('Network response was not ok');
+                return response.json();
+            })
+            .then(data => {
+                showLoading(false);
+                allData = data;
+                totalRecords = data.length;
+                currentPage = 1;
+                updateTableContent();
+            })
+            .catch(error => {
+                console.error('Error fetching data:', error);
+                showLoading(false);
+                showError(true);
             });
+    }
+
+    function nextPage() {
+        if (currentPage * ITEMS_PER_PAGE < totalRecords) {
+            currentPage++;
+            updateTableContent();
+        }
+    }
+
+    function previousPage() {
+        if (currentPage > 1) {
+            currentPage--;
+            updateTableContent();
+        }
+    }
+
+    function retryLoad() {
+        showError(false);
+        updateTable();
     }
 
     function applyFilters() {
@@ -129,11 +249,31 @@
         window.location.href = `/api/export-csv?start_date=${startDate}&end_date=${endDate}&status=${status}`;
     }
 
+    function updateStatsSummary(data) {
+        // Calculate most common status
+        const statusCounts = data.reduce((acc, day) => {
+            ['normal', 'rung_6', 'rung_12_5', 'stop'].forEach(status => {
+                acc[status] = (acc[status] || 0) + (day[`${status}_count`] || 0);
+            });
+            return acc;
+        }, {});
+        const mostCommon = Object.entries(statusCounts)
+            .sort((a, b) => b[1] - a[1])[0];
+
+        // Calculate averages
+        const avgTime = data.reduce((sum, day) => sum + (day.avg_prediction_time || 0), 0) / data.length;
+        const avgConf = data.reduce((sum, day) => sum + (day.avg_confidence || 0), 0) / data.length;
+
+        // Update UI
+        document.getElementById('mostCommonStatus').innerHTML = `
+            <span class="status-indicator" style="background-color: ${status_colors[mostCommon[0]]}"></span>
+            ${status_labels[mostCommon[0]]}
+        `;
+        document.getElementById('avgProcessingTime').textContent = `${avgTime.toFixed(1)} ms`;
+        document.getElementById('avgConfidence').textContent = `${(avgConf * 100).toFixed(1)}%`;
+    }
+
     // Initial load
     updateTable();
-
-    // Make status colors and labels available to JavaScript
-    const status_colors = {{ status_colors| tojson }};
-    const status_labels = {{ status_labels| tojson }};
 </script>
 {% endblock %}

@@ -47,7 +47,7 @@ class DatabaseReader:
             query = """
                 SELECT * FROM predictions 
                 WHERE time BETWEEN %s AND %s
-                ORDER BY time ASC
+                ORDER BY time DESC
             """
             cursor.execute(query, (start_time, end_time))
             results = cursor.fetchall()
