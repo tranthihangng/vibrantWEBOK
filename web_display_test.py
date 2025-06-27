@@ -18,8 +18,8 @@ STATUS_COLORS = {
 
 STATUS_LABELS = {
     'normal': 'Bình thường',
-    'rung_6': 'Rung nhẹ (6Hz)',
-    'rung_12_5': 'Rung nặng (12.5Hz)',
+    'rung_6': 'Lỗi 1(rung nhẹ)',
+    'rung_12_5': 'Lỗi 2(rung nặng)',
     'stop': 'Dừng'
 }
 

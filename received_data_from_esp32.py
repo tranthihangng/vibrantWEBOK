@@ -7,10 +7,10 @@ app = Flask(__name__)
  
 def create_csv_file():
     # Tạo headers cho file CSV
-    headers = [f"feature{i+1}" for i in range(36)] + ["state"]
+    headers = [f"feature{i+1}" for i in range(54)] + ["state"]
     
     # Tạo file CSV nếu chưa tồn tại
-    filename = 'n_rung_12_5.csv'
+    filename = 'f_normal.csv'
     if not os.path.exists(filename):
         with open(filename, 'w', newline='') as file:
             writer = csv.writer(file)
@@ -28,13 +28,13 @@ def receive_data():
             return jsonify({'error': 'Expected a JSON array'}), 400
 
         # Kiểm tra độ dài của dữ liệu
-        if len(data) != 36:
+        if len(data) != 54:
             return jsonify({'error': f'Expected 36 features, got {len(data)}'}), 400
 
         print("Received array:", data)
 
         # Thêm trạng thái "normal" vào cuối
-        data.append("rung_12_5")
+        data.append("normal")
 
         # Lưu vào file CSV
         filename = create_csv_file()
@@ -45,7 +45,7 @@ def receive_data():
         return jsonify({
             'message': 'Data received and saved successfully',
             'features': len(data) - 1,  # Trừ đi cột state
-            'state': 'rung_12_5'
+            'state': 'normal'
         }), 200
 
     except Exception as e:

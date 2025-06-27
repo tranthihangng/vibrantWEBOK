@@ -2,24 +2,46 @@
 <html lang="en">
 
 <head>
+    <!-- Meta tags for character encoding and responsive design -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Pump Monitoring System</title>
+
+    <!-- External CSS Libraries -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css">
+
+    <!-- External JavaScript Libraries -->
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
     <style>
+        /* Status color coding for different pump states */
         .status-normal {
-            color: green;
+            color: #28a745;
+            /* Green for normal operation */
             font-weight: bold;
         }
 
-        .status-fault {
-            color: red;
+        .status-rung_6 {
+            color: #ffc107;
+            /* Yellow for minor fault (6Hz vibration) */
             font-weight: bold;
         }
 
+        .status-rung_12_5 {
+            color: #dc3545;
+            /* Red for major fault (12.5Hz vibration) */
+            font-weight: bold;
+        }
+
+        .status-stop {
+            color: #6c757d;
+            /* Gray for stopped pumps */
+            font-weight: bold;
+        }
+
+        /* Fixed position refresh button in bottom right corner */
         .refresh-button {
             position: fixed;
             bottom: 20px;
@@ -27,6 +49,7 @@
             z-index: 1000;
         }
 
+        /* Card styling for better visual separation */
         .card {
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
             margin-bottom: 20px;
@@ -37,6 +60,7 @@
             border-bottom: 1px solid #dee2e6;
         }
 
+        /* Status indicator dots next to status text */
         .status-indicator {
             width: 10px;
             height: 10px;
@@ -45,18 +69,28 @@
             margin-right: 5px;
         }
 
+        /* Color coding for status indicator dots */
         .status-indicator.normal {
             background-color: #28a745;
         }
 
-        .status-indicator.fault {
+        .status-indicator.rung_6 {
+            background-color: #ffc107;
+        }
+
+        .status-indicator.rung_12_5 {
             background-color: #dc3545;
+        }
+
+        .status-indicator.stop {
+            background-color: #6c757d;
         }
 
         .status-indicator.unknown {
             background-color: #6c757d;
         }
 
+        /* Fixed position last update timestamp in bottom left corner */
         #last-update {
             position: fixed;
             bottom: 20px;
@@ -68,61 +102,40 @@
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
         }
 
+        /* Auto update status indicator styling */
         .auto-update-status {
             margin-left: 10px;
             font-size: 0.9em;
         }
 
-        .update-active {
-            color: #28a745;
+        /* Probability bars for showing status likelihood */
+        .probability-bar {
+            height: 20px;
+            background-color: #e9ecef;
+            border-radius: 4px;
+            margin-bottom: 10px;
+            position: relative;
+            overflow: hidden;
         }
 
-        .update-inactive {
-            color: #dc3545;
+        .probability-bar .fill {
+            height: 100%;
+            transition: width 0.3s ease;
+            /* Smooth animation for bar changes */
         }
 
-        .highlight {
-            animation: highlight 1s ease-in-out;
-        }
-
-        @keyframes highlight {
-            0% {
-                background-color: #fff;
-            }
-
-            50% {
-                background-color: #e3f2fd;
-            }
-
-            100% {
-                background-color: #fff;
-            }
-        }
-
+        /* Chart container for consistent sizing */
         .chart-container {
             position: relative;
-            margin-bottom: 20px;
             height: 300px;
-        }
-
-        .stats-card {
-            margin-bottom: 15px;
-        }
-
-        .stats-value {
-            font-size: 24px;
-            font-weight: bold;
-        }
-
-        .stats-label {
-            color: #666;
-            font-size: 14px;
+            margin-bottom: 20px;
         }
     </style>
 </head>
 
 <body>
     <div class="container mt-4">
+        <!-- Main page header with system title and auto-update status -->
         <h1 class="text-center mb-4">
             <i class="bi bi-gear-fill text-primary"></i>
             Pump Monitoring System
@@ -132,8 +145,9 @@
         </h1>
 
         <div class="row">
-            <!-- Status Panel -->
+            <!-- Left Column: Status Information -->
             <div class="col-md-6">
+                <!-- Real-time device status table -->
                 <div class="card">
                     <div class="card-header">
                         <h5 class="card-title mb-0">
@@ -142,6 +156,7 @@
                         </h5>
                     </div>
                     <div class="card-body">
+                        <!-- Dynamic status table populated from Flask backend -->
                         <table class="table">
                             <thead>
                                 <tr>
@@ -151,6 +166,7 @@
                                 </tr>
                             </thead>
                             <tbody>
+                                <!-- Jinja2 template loop to display each pump's status -->
                                 {% for pump_id, info in pump_status.items() %}
                                 <tr id="{{ pump_id }}-row">
                                     <td>
@@ -158,6 +174,7 @@
                                         Pump {{ pump_id[-1] }}
                                     </td>
                                     <td>
+                                        <!-- Status indicator dot with dynamic coloring -->
                                         <span
                                             class="status-indicator {{ info.status.lower() if info.status else 'unknown' }}"></span>
                                         <span class="status">{{ info.status if info.status else 'Unknown' }}</span>
@@ -169,15 +186,34 @@
                                 {% endfor %}
                             </tbody>
                         </table>
+
+                        <!-- Machine learning prediction probabilities section -->
+                        <div class="mt-4">
+                            <h6>Status Probabilities:</h6>
+                            {% for pump_id, info in pump_status.items() %}
+                            {% for status, prob in info.probabilities.items() %}
+                            <div class="mb-2">
+                                <div class="d-flex justify-content-between">
+                                    <span>{{ status.replace('_', ' ').title() }}</span>
+                                    <span>{{ "%.1f"|format(prob * 100) }}%</span>
+                                </div>
+                                <!-- Probability visualization bar -->
+                                <div class="probability-bar">
+                                    <!-- <div class="fill status-{{ status }}" style="width: {{ prob * 100 }}%;"></div> -->
+                                </div>
+                            </div>
+                            {% endfor %}
+                            {% endfor %}
+                        </div>
                     </div>
                 </div>
 
-                <!-- Prediction History -->
-                <div class="card">
+                <!-- Historical prediction data table -->
+                <div class="card mt-4">
                     <div class="card-header">
                         <h5 class="card-title mb-0">
                             <i class="bi bi-clock-history"></i>
-                            Prediction History
+                            Recent Predictions
                         </h5>
                     </div>
                     <div class="card-body">
@@ -185,19 +221,18 @@
                             <table class="table table-striped">
                                 <thead>
                                     <tr>
-                                        <th>ID</th>
                                         <th>Time</th>
                                         <th>Status</th>
                                     </tr>
                                 </thead>
+                                <!-- Table body updated dynamically via JavaScript -->
                                 <tbody id="predictions-table">
                                     {% for prediction in predictions %}
                                     <tr>
-                                        <td>{{ prediction.id }}</td>
                                         <td>{{ prediction.time }}</td>
                                         <td class="status-{{ prediction.status.lower() }}">
                                             <span class="status-indicator {{ prediction.status.lower() }}"></span>
-                                            {{ prediction.status.upper() }}
+                                            {{ prediction.status }}
                                         </td>
                                     </tr>
                                     {% endfor %}
@@ -208,40 +243,10 @@
                 </div>
             </div>
 
-            <!-- Statistics Panel -->
+            <!-- Right Column: Data Visualization Charts -->
             <div class="col-md-6">
-                <!-- Quick Stats -->
-                <div class="card mb-4">
-                    <div class="card-header">
-                        <h5 class="card-title mb-0">
-                            <i class="bi bi-lightning"></i>
-                            Quick Statistics
-                        </h5>
-                    </div>
-                    <div class="card-body">
-                        <div class="row">
-                            <div class="col-6 col-md-3 text-center stats-card">
-                                <div class="stats-value" id="total-predictions">0</div>
-                                <div class="stats-label">Total Predictions</div>
-                            </div>
-                            <div class="col-6 col-md-3 text-center stats-card">
-                                <div class="stats-value" id="fault-rate">0%</div>
-                                <div class="stats-label">Fault Rate</div>
-                            </div>
-                            <div class="col-6 col-md-3 text-center stats-card">
-                                <div class="stats-value" id="normal-count">0</div>
-                                <div class="stats-label">Normal States</div>
-                            </div>
-                            <div class="col-6 col-md-3 text-center stats-card">
-                                <div class="stats-value" id="fault-count">0</div>
-                                <div class="stats-label">Fault States</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Status Distribution Chart -->
-                <div class="card mb-4">
+                <!-- Pie chart showing status distribution -->
+                <div class="card">
                     <div class="card-header">
                         <h5 class="card-title mb-0">
                             <i class="bi bi-pie-chart"></i>
@@ -250,13 +255,14 @@
                     </div>
                     <div class="card-body">
                         <div class="chart-container">
+                            <!-- Chart.js pie chart canvas -->
                             <canvas id="statusChart"></canvas>
                         </div>
                     </div>
                 </div>
 
-                <!-- Status Timeline -->
-                <div class="card mb-4">
+                <!-- Line chart showing status changes over time -->
+                <div class="card mt-4">
                     <div class="card-header">
                         <h5 class="card-title mb-0">
                             <i class="bi bi-graph-up"></i>
@@ -265,78 +271,88 @@
                     </div>
                     <div class="card-body">
                         <div class="chart-container">
+                            <!-- Chart.js line chart canvas -->
                             <canvas id="timelineChart"></canvas>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Probability Distribution -->
-                <div class="card">
-                    <div class="card-header">
-                        <h5 class="card-title mb-0">
-                            <i class="bi bi-bar-chart"></i>
-                            Probability Distribution
-                        </h5>
-                    </div>
-                    <div class="card-body">
-                        <div class="chart-container">
-                            <canvas id="probabilityChart"></canvas>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
 
+        <!-- Fixed position elements for user interaction -->
         <div id="last-update">
             Last update: <span id="last-update-time">Just now</span>
         </div>
 
+        <!-- Toggle button for auto-refresh functionality -->
         <button class="btn btn-primary refresh-button" onclick="toggleAutoUpdate()">
-            <i class="bi bi-arrow-clockwise"></i> <span id="refresh-text">Stop Auto Update</span>
+            <i class="bi bi-arrow-clockwise"></i>
+            <span id="refresh-text">Stop Auto Update</span>
         </button>
     </div>
 
     <script>
+        // Global variables for controlling auto-update functionality
         let autoUpdateEnabled = true;
         let updateInterval;
-        let lastPredictionId = null;
 
+        /**
+         * Updates the last update timestamp display
+         */
         function updateLastUpdateTime() {
             const now = new Date();
             const timeStr = now.toLocaleTimeString();
             $('#last-update-time').text(timeStr);
         }
 
+        /**
+         * Fetches latest status data from the server and updates the UI
+         * Makes AJAX call to /api/status endpoint
+         */
         function updateStatus() {
             if (!autoUpdateEnabled) return;
 
             $.get('/api/status', function (data) {
+                // Loop through each pump's status data
                 for (const [pumpId, info] of Object.entries(data)) {
                     const row = $(`#${pumpId}-row`);
                     const statusClass = info.status.toLowerCase();
 
+                    // Update status text and timestamp
                     row.find('.status').text(info.status);
                     row.find('.last-updated').text(info.last_updated || 'Not available');
+
+                    // Update status indicator color
                     row.find('.status-indicator')
-                        .removeClass('normal fault unknown')
+                        .removeClass('normal rung_6 rung_12_5 stop unknown')
                         .addClass(statusClass);
+
+                    // Update ML prediction probability bars
+                    const probContainer = row.closest('.card-body').find('.probability-bar');
+                    Object.entries(info.probabilities).forEach(([status, prob]) => {
+                        probContainer.find(`.status-${status}`).css('width', `${prob * 100}%`);
+                    });
                 }
+                updateLastUpdateTime();
             });
         }
 
-        // Khởi tạo biểu đồ
-        let statusChart, timelineChart, probabilityChart;
+        // Chart.js instances for data visualization
+        let statusChart, timelineChart;
 
+        /**
+         * Initializes Chart.js charts for status visualization
+         */
         function initializeCharts() {
-            // Status Distribution Chart
+            // Pie chart for status distribution
             const statusCtx = document.getElementById('statusChart').getContext('2d');
             statusChart = new Chart(statusCtx, {
                 type: 'pie',
                 data: {
-                    labels: ['Normal', 'Fault'],
+                    labels: ['Normal', 'Minor Fault (6Hz)', 'Major Fault (12.5Hz)', 'Stop'],
                     datasets: [{
-                        data: [0, 0],
-                        backgroundColor: ['#28a745', '#dc3545']
+                        data: [0, 0, 0, 0],
+                        backgroundColor: ['#28a745', '#ffc107', '#dc3545', '#6c757d']
                     }]
                 },
                 options: {
@@ -345,14 +361,14 @@
                 }
             });
 
-            // Timeline Chart
+            // Line chart for status timeline
             const timelineCtx = document.getElementById('timelineChart').getContext('2d');
             timelineChart = new Chart(timelineCtx, {
                 type: 'line',
                 data: {
                     labels: [],
                     datasets: [{
-                        label: 'Status (0: Normal, 1: Fault)',
+                        label: 'Pump Status',
                         data: [],
                         borderColor: '#007bff',
                         fill: false
@@ -363,113 +379,83 @@
                     maintainAspectRatio: false,
                     scales: {
                         y: {
-                            min: -0.1,
-                            max: 1.1,
+                            beginAtZero: true,
+                            max: 4,
                             ticks: {
-                                stepSize: 1
+                                // Custom labels for status values
+                                callback: function (value) {
+                                    const labels = ['Stop', 'Normal', 'Minor Fault', 'Major Fault'];
+                                    return labels[value] || '';
+                                }
                             }
                         }
                     }
                 }
             });
-
-            // Probability Distribution Chart
-            const probCtx = document.getElementById('probabilityChart').getContext('2d');
-            probabilityChart = new Chart(probCtx, {
-                type: 'bar',
-                data: {
-                    labels: ['Normal', 'Fault'],
-                    datasets: [{
-                        label: 'Probability',
-                        data: [0, 0],
-                        backgroundColor: ['#28a745', '#dc3545']
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: {
-                        y: {
-                            beginAtZero: true,
-                            max: 1
-                        }
-                    }
-                }
-            });
         }
 
-        function updateCharts(predictions) {
-            if (!predictions || predictions.length === 0) return;
-
-            // Tính toán thống kê
-            const total = predictions.length;
-            const faults = predictions.filter(p => p.status.toLowerCase() === 'fault').length;
-            const normals = total - faults;
-            const faultRate = ((faults / total) * 100).toFixed(1);
-
-            // Cập nhật quick stats
-            $('#total-predictions').text(total);
-            $('#fault-rate').text(faultRate + '%');
-            $('#normal-count').text(normals);
-            $('#fault-count').text(faults);
-
-            // Cập nhật Status Distribution Chart
-            statusChart.data.datasets[0].data = [normals, faults];
-            statusChart.update();
-
-            // Cập nhật Timeline Chart
-            const timelineData = predictions.map(p => ({
-                x: new Date(p.time),
-                y: p.status.toLowerCase() === 'fault' ? 1 : 0
-            })).reverse();
-
-            timelineChart.data.labels = timelineData.map(d => d.x.toLocaleTimeString());
-            timelineChart.data.datasets[0].data = timelineData.map(d => d.y);
-            timelineChart.update();
-
-            // Lấy dự đoán mới nhất cho Probability Chart
-            const latest = predictions[0];
-            probabilityChart.data.datasets[0].data = [
-                latest.normal_prob || 0,
-                latest.fault_prob || 0
-            ];
-            probabilityChart.update();
-        }
-
-        function refreshData() {
-            if (!autoUpdateEnabled) return;
-
+        /**
+         * Updates charts with latest prediction data
+         * Fetches data from /api/latest endpoint
+         */
+        function updateCharts() {
             $.get('/api/latest', function (data) {
                 const predictions = JSON.parse(data);
-                if (predictions.length > 0) {
-                    const latestPrediction = predictions[0];
+                if (!predictions || predictions.length === 0) return;
 
-                    if (lastPredictionId !== latestPrediction.id) {
-                        let tableHtml = '';
-                        predictions.forEach(prediction => {
-                            const statusClass = prediction.status.toLowerCase();
-                            tableHtml += `
-                                <tr class="highlight">
-                                    <td>${prediction.id}</td>
-                                    <td>${prediction.time}</td>
-                                    <td class="status-${statusClass}">
-                                        <span class="status-indicator ${statusClass}"></span>
-                                        ${prediction.status.toUpperCase()}
-                                    </td>
-                                </tr>
-                            `;
-                        });
-                        $('#predictions-table').html(tableHtml);
-                        updateStatus();
-                        updateLastUpdateTime();
-                        updateCharts(predictions);
+                // Count occurrences of each status for pie chart
+                const statusCounts = {
+                    'NORMAL': 0,
+                    'RUNG_6': 0,
+                    'RUNG_12_5': 0,
+                    'STOP': 0
+                };
 
-                        lastPredictionId = latestPrediction.id;
-                    }
-                }
+                predictions.forEach(pred => {
+                    statusCounts[pred.status] = (statusCounts[pred.status] || 0) + 1;
+                });
+
+                // Update pie chart data
+                statusChart.data.datasets[0].data = [
+                    statusCounts['NORMAL'],
+                    statusCounts['RUNG_6'],
+                    statusCounts['RUNG_12_5'],
+                    statusCounts['STOP']
+                ];
+                statusChart.update();
+
+                // Prepare timeline data (convert status to numeric values)
+                const timelineData = predictions.map(pred => ({
+                    x: new Date(pred.time),
+                    y: ['STOP', 'NORMAL', 'RUNG_6', 'RUNG_12_5'].indexOf(pred.status)
+                })).reverse();
+
+                // Update line chart data
+                timelineChart.data.labels = timelineData.map(d => d.x.toLocaleTimeString());
+                timelineChart.data.datasets[0].data = timelineData.map(d => d.y);
+                timelineChart.update();
+
+                // Update recent predictions table
+                let tableHtml = '';
+                predictions.forEach(pred => {
+                    tableHtml += `
+                        <tr>
+                            <td>${pred.time}</td>
+                            <td class="status-${pred.status.toLowerCase()}">
+                                <span class="status-indicator ${pred.status.toLowerCase()}"></span>
+                                ${pred.status}
+                            </td>
+                        </tr>
+                    `;
+                });
+                $('#predictions-table').html(tableHtml);
             });
         }
 
+        /**
+         * Toggles auto-update functionality on/off
+         * Updates UI elements to reflect current state
+         */
         function toggleAutoUpdate() {
             autoUpdateEnabled = !autoUpdateEnabled;
             const button = $('.refresh-button');
@@ -477,42 +463,44 @@
             const refreshText = $('#refresh-text');
 
             if (autoUpdateEnabled) {
+                // Enable auto-update mode
                 button.removeClass('btn-danger').addClass('btn-primary');
-                status.removeClass('update-inactive').addClass('update-active');
                 status.html('<i class="bi bi-arrow-repeat"></i> Auto Update Active');
                 refreshText.text('Stop Auto Update');
                 startAutoUpdate();
             } else {
+                // Disable auto-update mode
                 button.removeClass('btn-primary').addClass('btn-danger');
-                status.removeClass('update-active').addClass('update-inactive');
                 status.html('<i class="bi bi-stop-circle"></i> Auto Update Stopped');
                 refreshText.text('Start Auto Update');
                 stopAutoUpdate();
             }
         }
 
+        /**
+         * Starts the auto-update interval timer
+         * Updates data every 1 second
+         */
         function startAutoUpdate() {
-            // Update immediately
-            refreshData();
-            // Set up interval for future updates (every 1 second)
-            updateInterval = setInterval(refreshData, 1000);
+            updateStatus();
+            updateCharts();
+            updateInterval = setInterval(() => {
+                updateStatus();
+                updateCharts();
+            }, 1000);
         }
 
+        /**
+         * Stops the auto-update interval timer
+         */
         function stopAutoUpdate() {
             clearInterval(updateInterval);
         }
 
-        // Khởi tạo biểu đồ khi trang tải xong
+        // Initialize the application when DOM is ready
         $(document).ready(function () {
             initializeCharts();
-            $.get('/api/latest', function (data) {
-                const predictions = JSON.parse(data);
-                if (predictions.length > 0) {
-                    lastPredictionId = predictions[0].id;
-                    updateCharts(predictions);
-                }
-                startAutoUpdate();
-            });
+            startAutoUpdate();
         });
     </script>
 </body>

@@ -47,7 +47,16 @@ def get_pump_status():
         }
     except Exception as e:
         print(f"Error getting pump status: {e}")
-        return None
+        return {
+            'status': 'ERROR',
+            'last_updated': None,
+            'probabilities': {
+                'normal': 0,
+                'rung_12_5': 0,
+                'rung_6': 0,
+                'stop': 0
+            }
+        }
 
 def get_daily_stats():
     try:
@@ -107,8 +116,34 @@ def index():
     status = get_pump_status()
     stats = get_daily_stats()
     
+    # Format the pump status data structure
+    pump_status = {
+        'pump1': {
+            'status': status['status'],
+            'last_updated': status['last_updated'],
+            'probabilities': status['probabilities']
+        }
+    }
+    
+    # Get recent predictions for the predictions table
+    try:
+        db = DatabaseHandler()
+        success, result = db.get_latest_data(limit=10)
+        predictions = []
+        if success and not result.empty:
+            for _, row in result.iterrows():
+                predictions.append({
+                    'id': row.name,  # Using index as ID
+                    'time': row['timestamp'].strftime("%Y-%m-%d %H:%M:%S"),
+                    'status': row['status'].upper()
+                })
+    except Exception as e:
+        print(f"Error getting predictions: {e}")
+        predictions = []
+    
     return render_template('index.html', 
-                         latest_prediction=status,
+                         pump_status=pump_status,
+                         predictions=predictions,
                          daily_stats=stats)
 
 @app.route('/history')
@@ -167,6 +202,50 @@ def export_csv():
             download_name=f'pump_data_{date_from.strftime("%Y%m%d")}_{date_to.strftime("%Y%m%d")}.csv'
         )
         
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/latest')
+def get_latest_predictions():
+    """API endpoint for getting latest predictions"""
+    try:
+        db = DatabaseHandler()
+        success, result = db.get_latest_data(limit=10)
+        
+        if not success:
+            return jsonify({'error': 'Failed to fetch latest predictions'}), 500
+            
+        predictions = []
+        for _, row in result.iterrows():
+            predictions.append({
+                'id': row.name,  # Using index as ID
+                'time': row['timestamp'].strftime("%Y-%m-%d %H:%M:%S"),
+                'status': row['status'].upper(),
+                'normal_prob': float(row['normal_prob']),
+                'fault_prob': float(row['rung_12_5_prob'] + row['rung_6_prob'])  # Combined fault probability
+            })
+            
+        return jsonify(predictions)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/status')
+def get_status():
+    """API endpoint for getting current status"""
+    try:
+        status = get_pump_status()
+        if not status:
+            return jsonify({'error': 'Failed to get status'}), 500
+            
+        # Format the pump status data structure
+        pump_status = {
+            'pump1': {
+                'status': status['status'],
+                'last_updated': status['last_updated'],
+                'probabilities': status['probabilities']
+            }
+        }
+        return jsonify(pump_status)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

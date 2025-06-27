@@ -14,20 +14,6 @@ import threading
 # Khởi tạo Flask app
 app = Flask(__name__)
 
-# path = "NCKH_FI/mlp_best_model.joblib"
-# if not os.path.exists(path):
-#     print("File không tồn tại:", path)
-# else:
-#     model = joblib.load(path)
-# Dùng cách an toàn để tránh lỗi unicode
-# path = "D:/NCKH/NCKH_FI/mlp_best_model.joblib"
-
-# if not os.path.exists(path):
-#     print("File không tồn tại:", path)
-# else:
-#     model = joblib.load(path)
-#     print("Tải mô hình thành công!")
-
 # === Load mô hình và scaler đã lưu ===
 model = joblib.load("practical_mlp_best_model.joblib")
 scaler = joblib.load("practical_scaler.joblib")
@@ -65,7 +51,7 @@ def receive_data():
             return jsonify({'error': 'Expected a JSON array'}), 400
 
         # Kiểm tra độ dài của dữ liệu (31 đặc trưng giống trong pred.py)
-        expected_features = 36
+        expected_features = 54
         if len(data) != expected_features:
             print(f"❌ Số lượng đặc trưng không đúng: nhận {len(data)}, cần {expected_features}")
             return jsonify({'error': f'Expected {expected_features} features, got {len(data)}'}), 400
